@@ -1,5 +1,5 @@
-streamlit
-streamlit-audiorecorder
+streamlit==1.39.0
+streamlit-audiorecorder==0.0.3
 gtts
 openai
 requests
