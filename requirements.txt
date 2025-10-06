@@ -1,0 +1,9 @@
+
+echo "streamlit" > requirements.txt
+echo "SpeechRecognition" >> requirements.txt
+echo "pydub" >> requirements.txt
+echo "imageio-ffmpeg" >> requirements.txt   # nếu dùng pydub (ffmpeg)
+echo "numpy" >> requirements.txt
+git add requirements.txt
+git commit -m "Add requirements"
+git push origin main
