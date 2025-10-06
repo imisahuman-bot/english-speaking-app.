@@ -1,88 +1,58 @@
 import streamlit as st
-import sounddevice as sd
-import numpy as np
-import tempfile
-import whisper
-import difflib
-import pyttsx3
-import time
-import soundfile as sf
+from streamlit_audiorecorder import audiorecorder
+import speech_recognition as sr
+import io
 
-# ===============================
-# 1. Cache Whisper model (load 1 lần)
-# ===============================
-@st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("tiny")  # dùng tiny cho nhanh
+# ======================
+# 🎧 GIAO DIỆN CHÍNH
+# ======================
+st.set_page_config(page_title="Luyện nói Tiếng Anh", page_icon="🎙️", layout="centered")
+st.title("🎙️ Ứng dụng luyện nói Tiếng Anh")
+st.write("Bấm **Record** để bắt đầu ghi âm, sau đó bấm **Stop** để nghe lại và xem phần nhận diện giọng nói.")
 
-model = load_whisper_model()
+# ======================
+# 🎤 GHI ÂM
+# ======================
+audio = audiorecorder("🎙️ Bắt đầu ghi âm", "⏹️ Dừng ghi âm")
 
-# ===============================
-# 2. Hàm ghi âm
-# ===============================
-def record_audio(duration=5, fs=16000):
-    st.info("🎤 Đang ghi âm... Nói đi bạn!")
-    recording = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype="float32")
-    sd.wait()
-    st.success("✅ Ghi âm xong!")
-    return np.squeeze(recording)
+if len(audio) > 0:
+    # Phát lại âm thanh
+    st.audio(audio.tobytes(), format="audio/wav")
 
-# ===============================
-# 3. Chấm điểm phát âm (so sánh với IPA/từ gốc)
-# ===============================
-def check_pronunciation(user_text, target_word):
-    ratio = difflib.SequenceMatcher(None, user_text.lower(), target_word.lower()).ratio()
-    return ratio
+    # Lưu file tạm
+    wav_bytes = audio.tobytes()
+    with open("voice_temp.wav", "wb") as f:
+        f.write(wav_bytes)
 
-# ===============================
-# 4. Đọc to từ vựng
-# ===============================
-def speak_word(word):
-    engine = pyttsx3.init()
-    engine.say(word)
-    engine.runAndWait()
+    st.success("✅ Ghi âm thành công! Đang nhận diện giọng nói...")
 
-# ===============================
-# 5. Streamlit UI
-# ===============================
-def main():
-    st.title("📚 Luyện phát âm từ vựng")
-    st.write("Nói theo từ hệ thống đưa ra, rồi kiểm tra đúng sai 🚀")
+    # ======================
+    # 🧠 NHẬN DIỆN GIỌNG NÓI
+    # ======================
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+        audio_data = recognizer.record(source)
+        try:
+            text = recognizer.recognize_google(audio_data)
+            st.subheader("📄 Kết quả nhận diện:")
+            st.success(text)
+        except sr.UnknownValueError:
+            st.error("❌ Không nhận diện được giọng nói, hãy thử lại.")
+        except sr.RequestError:
+            st.error("⚠️ Lỗi khi kết nối tới dịch vụ nhận diện. Hãy thử lại sau.")
 
-    # Từ vựng mẫu
-    vocab = {
-        "apple": {"mean": "quả táo", "ipa": "/ˈæp.l̩/"},
-        "banana": {"mean": "quả chuối", "ipa": "/bəˈnɑː.nə/"},
-        "orange": {"mean": "quả cam", "ipa": "/ˈɒr.ɪndʒ/"}
-    }
+    # ======================
+    # 💾 LƯU FILE (TÙY CHỌN)
+    # ======================
+    with st.expander("💾 Tải xuống file âm thanh"):
+        st.download_button(
+            label="Tải file WAV",
+            data=wav_bytes,
+            file_name="voice_record.wav",
+            mime="audio/wav"
+        )
 
-    word = st.selectbox("Chọn từ để luyện:", list(vocab.keys()))
-    st.write(f"**Nghĩa:** {vocab[word]['mean']}")
-    st.write(f"**IPA:** {vocab[word]['ipa']}")
+else:
+    st.info("👉 Hãy bấm **Record** để bắt đầu ghi âm.")
 
-    if st.button("🔊 Nghe phát âm"):
-        speak_word(word)
 
-    if st.button("🎙 Ghi âm & Kiểm tra"):
-        audio = record_audio()
-
-        # Lưu tạm file wav
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-            sf.write(tmpfile.name, audio, 16000)
-            file_path = tmpfile.name
-
-        # Nhận diện bằng Whisper
-        result = model.transcribe(file_path, fp16=False, language="en")
-        user_text = result["text"].strip()
-
-        st.write(f"🗣 Bạn nói: `{user_text}`")
-
-        # Đánh giá đúng sai
-        score = check_pronunciation(user_text, word)
-        if score > 0.8:
-            st.success(f"✅ Chuẩn rồi! ({score*100:.1f}%)")
-        else:
-            st.error(f"❌ Chưa chuẩn lắm ({score*100:.1f}%)")
-
-if __name__ == "__main__":
-    main()
